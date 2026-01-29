@@ -138,11 +138,129 @@ function getConfiguredBaseUrl(): string {
 
 /**
  * Check if URL is a messages endpoint for the configured API provider.
- * Works with Anthropic, OpenRouter, and any custom baseUrl.
+ * Works with Anthropic, OpenRouter, Cerebras, and any custom baseUrl.
  */
 function isApiMessagesUrl(url: string): boolean {
   const baseUrl = getConfiguredBaseUrl();
-  return url.startsWith(baseUrl) && url.includes('/messages');
+  return url.startsWith(baseUrl) && (url.includes('/messages') || url.includes('/chat/completions'));
+}
+
+/**
+ * Check if the base URL is for Cerebras.
+ */
+function isCerebras(url: string): boolean {
+  return url.startsWith('https://api.cerebras.ai');
+}
+
+/**
+ * Map Anthropic messages format to OpenAI format.
+ */
+function mapAnthropicToOpenAI(body: any): any {
+  const messages: any[] = [];
+  
+  if (body.system) {
+    messages.push({ role: 'system', content: body.system });
+  }
+
+  if (body.messages) {
+    for (const msg of body.messages) {
+      if (Array.isArray(msg.content)) {
+        const contentParts = msg.content.map((c: any) => {
+          if (c.type === 'text') return c.text;
+          return null;
+        }).filter(Boolean);
+        
+        const openAiMsg: any = { 
+          role: msg.role === 'assistant' ? 'assistant' : 'user', 
+          content: contentParts.join('\n') 
+        };
+        
+        // Handle tool calls in assistant messages
+        const toolCalls = msg.content.filter((c: any) => c.type === 'tool_use').map((c: any) => ({
+          id: c.id,
+          type: 'function',
+          function: {
+            name: c.name,
+            arguments: JSON.stringify(c.input),
+          }
+        }));
+        if (toolCalls.length > 0) openAiMsg.tool_calls = toolCalls;
+        
+        messages.push(openAiMsg);
+
+        // Handle tool results as separate messages in OpenAI
+        const toolResults = msg.content.filter((c: any) => c.type === 'tool_result');
+        for (const result of toolResults) {
+          messages.push({
+            role: 'tool',
+            tool_call_id: result.tool_use_id,
+            content: typeof result.content === 'string' ? result.content : JSON.stringify(result.content),
+          });
+        }
+      } else {
+        messages.push({ role: msg.role, content: msg.content });
+      }
+    }
+  }
+
+  const openAiBody: any = {
+    model: body.model.replace('cerebras/', ''),
+    messages,
+    stream: false, // Force false for translation logic
+    max_tokens: body.max_tokens,
+    temperature: body.temperature,
+  };
+
+  if (body.tools) {
+    openAiBody.tools = body.tools.map((t: any) => ({
+      type: 'function',
+      function: {
+        name: t.name,
+        description: t.description,
+        parameters: t.input_schema,
+      }
+    }));
+  }
+
+  return openAiBody;
+}
+
+/**
+ * Map OpenAI response format back to Anthropic.
+ */
+function mapOpenAIToAnthropic(openAiResp: any): any {
+  const choice = openAiResp.choices[0];
+  const message = choice.message;
+  
+  const content: any[] = [];
+  if (message.content) {
+    content.push({ type: 'text', text: message.content });
+  }
+  
+  if (message.tool_calls) {
+    for (const call of message.tool_calls) {
+      content.push({
+        type: 'tool_use',
+        id: call.id,
+        name: call.function.name,
+        input: JSON.parse(call.function.arguments),
+      });
+    }
+  }
+
+  return {
+    id: openAiResp.id,
+    type: 'message',
+    role: 'assistant',
+    model: openAiResp.model,
+    content,
+    stop_reason: choice.finish_reason === 'tool_calls' ? 'tool_use' : 'end_turn',
+    stop_sequence: null,
+    usage: {
+      input_tokens: openAiResp.usage.prompt_tokens,
+      output_tokens: openAiResp.usage.completion_tokens,
+    },
+  };
 }
 
 /**
@@ -389,6 +507,34 @@ async function interceptedFetch(
 
         // Add _intent and _displayName to MCP tool schemas
         parsed = addMetadataToMcpTools(parsed);
+
+        // Special handling for Cerebras (Anthropic -> OpenAI translation)
+        if (isCerebras(url)) {
+          debugLog('[Cerebras] Mapping Anthropic request to OpenAI');
+          url = url.replace('/messages', '/chat/completions');
+          
+          parsed = mapAnthropicToOpenAI(parsed);
+          
+          const modifiedInit = {
+            ...init,
+            body: JSON.stringify(parsed),
+          };
+
+          const response = await originalFetch(url, modifiedInit);
+          
+          // Map OpenAI response back to Anthropic
+          if (response.ok) {
+            const openAiResp = await response.json();
+            const anthropicResp = mapOpenAIToAnthropic(openAiResp);
+            return new Response(JSON.stringify(anthropicResp), {
+              status: response.status,
+              statusText: response.statusText,
+              headers: response.headers,
+            });
+          }
+          
+          return logResponse(response, url, startTime);
+        }
 
         const modifiedInit = {
           ...init,

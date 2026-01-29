@@ -62,6 +62,7 @@ const STATIC_PROVIDER_DOMAINS: Readonly<Record<string, string>> = Object.freeze(
   'linear': 'linear.app',
   'slack': 'slack.com',
   'notion': 'notion.so',
+  'cerebras': 'cerebras.ai',
 });
 
 // Re-export browser-safe utility from service-url
