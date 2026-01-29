@@ -22,7 +22,8 @@ jobs:
         run: bun install
 
       - name: Build and Release Mac ARM64
-        run: bun run electron:dist:mac --arm64
-        working-directory: apps/electron
+        run: |
+          # Build from root where scripts are, but builder will use the yml
+          bun run electron:dist:mac --arm64
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
