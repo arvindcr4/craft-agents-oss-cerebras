@@ -478,7 +478,7 @@ async function interceptedFetch(
   input: string | URL | Request,
   init?: RequestInit
 ): Promise<Response> {
-  const url =
+  let url =
     typeof input === 'string'
       ? input
       : input instanceof URL
