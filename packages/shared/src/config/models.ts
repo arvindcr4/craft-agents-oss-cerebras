@@ -22,6 +22,7 @@ export const MODELS: ModelDefinition[] = [
   { id: 'claude-haiku-4-5-20251001', name: 'Haiku 4.5', shortName: 'Haiku', description: 'Fast & efficient', contextWindow: 200000 },
   { id: 'cerebras/llama3.1-70b', name: 'Llama 3.1 70B (Cerebras)', shortName: 'Llama 70B', description: 'Blazing fast', contextWindow: 8192 },
   { id: 'cerebras/llama3.1-8b', name: 'Llama 3.1 8B (Cerebras)', shortName: 'Llama 8B', description: 'Instant', contextWindow: 8192 },
+  { id: 'cerebras/zai-glm-4.7', name: 'ZAI GLM-4.7 (Cerebras)', shortName: 'GLM-4.7', description: 'Blazing fast multilingual', contextWindow: 8192 },
 ];
 
 // ============================================
