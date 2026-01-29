@@ -204,7 +204,7 @@ function mapAnthropicToOpenAI(body: any): any {
   }
 
   const openAiBody: any = {
-    model: body.model.replace('cerebras/', ''),
+    model: body.model === 'cerebras/zai-glm-4.7' ? 'zai-glm-4.7' : body.model.replace('cerebras/', ''),
     messages,
     stream: false, // Force false for translation logic
     max_tokens: body.max_tokens,
