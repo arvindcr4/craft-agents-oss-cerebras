@@ -23,5 +23,6 @@ jobs:
 
       - name: Build and Release Mac ARM64
         run: bun run electron:dist:mac --arm64
+        working-directory: apps/electron
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
